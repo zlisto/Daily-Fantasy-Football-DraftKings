@@ -1,9 +1,83 @@
 
 import numpy as np
 import pandas as pd
+import glob
+
+def create_filenames(path):
+    """
+    Create and locate all necessary filenames for DraftKings fantasy football analysis.
+    
+    This function constructs file paths for required CSV files and automatically searches
+    for DFN (Daily Fantasy Nerd) projection files using glob patterns. It handles both
+    offense and defense projection files by searching for files that match the expected
+    naming conventions.
+    
+    Parameters
+    ----------
+    path : str
+        The directory path where all the CSV files are located.
+        
+    Returns
+    -------
+    tuple
+        A tuple containing five file paths in the following order:
+        - fname_salary (str): Path to DKSalaries.csv file
+        - fname_entries (str): Path to DKEntries.csv file  
+        - fname_lineups (str): Path to lineups.csv file
+        - fname_proj_offense (str): Path to DFN NFL Offense projection file
+        - fname_proj_defense (str): Path to DFN NFL Defense projection file
+        
+    Raises
+    ------
+    FileNotFoundError
+        If either the DFN NFL Offense or DFN NFL Defense projection files
+        cannot be found in the specified directory.
+        
+    Notes
+    -----
+    The function uses glob patterns to find projection files:
+    - Offense files: "DFN NFL Offense*.csv"
+    - Defense files: "DFN NFL Defense*.csv"
+    
+    If multiple files match the pattern, the first one found is used.
+    """
+    
+    fname_entries = f"{path}/DKEntries.csv"  #file where your lineup entries will be saved
+    fname_lineups = f"{path}/lineups.csv"
+
+    # Automatically find DFN projection files
+    # Find DFN NFL Offense file
+    offense_files = glob.glob(f"{path}/DFN NFL Offense*.csv")
+    if offense_files:
+        fname_proj_offense = offense_files[0]
+        print(f"Found offense projections: {fname_proj_offense}")
+    else:
+        fname_proj_offense = None
+        raise FileNotFoundError(f"No DFN NFL Offense file found in {path}")
+
+    # Find DFN NFL Defense file
+    defense_files = glob.glob(f"{path}/DFN NFL Defense*.csv")
+    if defense_files:
+        fname_proj_defense = defense_files[0]
+        print(f"Found defense projections: {fname_proj_defense}")
+    else:
+        fname_proj_defense = None
+        raise FileNotFoundError(f"No DFN NFL Defense file found in {path}")
+    
+    salary_files = glob.glob(f"{path}/DKSalaries*.csv")
+    if salary_files:
+        fname_salary = salary_files[0]
+        print(f"Found salary file: {fname_salary}")
+    else:
+        fname_salary = None
+        raise FileNotFoundError(f"No DKSalaries file found in {path}")
+        
+    return fname_salary, fname_entries, fname_lineups, fname_proj_offense, fname_proj_defense
+        
 
 def load_data_showdown(fname_salary, fname_proj_offense, fname_proj_defense):
-    df_salary = pd.read_csv(fname_salary)
+    ''' Load data for NFL Showdown contests '''
+    df_salary = pd.read_csv(fname_salary, skiprows=7, usecols=range(10, 19))
     df_proj_off = pd.read_csv(fname_proj_offense)
     df_proj_def = pd.read_csv(fname_proj_defense)
 
@@ -41,9 +115,11 @@ def load_data_showdown(fname_salary, fname_proj_offense, fname_proj_defense):
 
 
 def load_data(fname_salary, fname_proj_offense, fname_proj_defense):
-    df_salary = pd.read_csv(fname_salary)
+    ''' Load data for standard NFL contests '''
+    df_salary = pd.read_csv(fname_salary, skiprows=7, usecols=range(10, 19))
     df_proj_off = pd.read_csv(fname_proj_offense)
     df_proj_def = pd.read_csv(fname_proj_defense)
+
 
     df = pd.concat([df_proj_off, df_proj_def])
     df = df[df['Proj FP']>0]
@@ -66,6 +142,12 @@ def load_data(fname_salary, fname_proj_offense, fname_proj_defense):
     df.loc[df['Pos']=='D','Pos'] = 'DST'
     df.loc[df['Pos'] == 'DST', 'Name'] = df.loc[df['Pos'] == 'DST', 'Team']
 
+    # Filter df to only include teams that are in df_salary (Sunday games only)
+    # Get unique team abbreviations from df_salary
+    salary_teams = set(df_salary['TeamAbbrev'].unique())
+    
+    # Filter df to only include teams that are in the salary file
+    df = df[df['Team'].isin(salary_teams) | df['Opp'].isin(salary_teams)]
 
     df_merge = pd.merge(df, df_salary, on=["Name", "Salary",])
     cols = ['Name','Name + ID', 'Pos','Salary','Team','Opp','Game','Proj FP']
@@ -162,7 +244,8 @@ def write_lineups(X, df, fname_lineups):
 def update_entries(fname_entries, df_lineups):
     ''' Update DraftKings entry file with new lineups '''
     nlineups = len(df_lineups)
-    df_entries = pd.read_csv(fname_entries)
+    df_entries = pd.read_csv(fname_entries, skiprows=0, usecols=range(0, 12))
+    print(f"df_entries: {df_entries.head()}")
     df_entries = df_entries.iloc[0:nlineups]
     df_entries = df_entries[df_entries.columns[0:13]]
     cols =  ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX','DST']
